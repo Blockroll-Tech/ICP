@@ -22,17 +22,13 @@ Used to structure the schema and DTO .
 
 ##### generateWallet() for creation of wallets . Uses the thread to encrypt and then stores on the db.
 
-##### getCkUSDCBalance() to get user balance.
+##### getCkUSDCBalance() to get s user balance.
 
 ##### transferCkUSDC Allows user transfer USDC to others on the network
 
 ##### getLatestTx() gets the user transaction history from the ICP network and stores on our db.
 
 All Other functions in the service aids these functions to work efficiently.
-
-```bash
-pip install foobar
-```
 
 ## Usage
 
