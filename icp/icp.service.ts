@@ -80,7 +80,8 @@ class IcpService {
         try {
             const fromIdentity = this.createIdentityFromPrivateKey(privateKeyHex);
             const senderAgent = new HttpAgent({ host: this.host, identity: fromIdentity });
-            const senderCkUSDC = this.createActor(this.ledgerCanisterId, this.getCkUSDCIDL(),senderAgent);
+            await senderAgent.fetchRootKey();
+            const senderCkUSDC = this.createActor(this.ledgerCanisterId, this.getCkUSDCIDL(), senderAgent);
 
             const toAccount = {
                 owner: Principal.fromText(toPrincipal),
@@ -99,14 +100,29 @@ class IcpService {
             const result = await senderCkUSDC.icrc1_transfer(transferArg);
 
             if ('Err' in result) {
-                throw new Error(`Transfer failed: ${JSON.stringify(result.Err)}`);
+                const serializedError = this.serializeBigIntError(result.Err);
+                throw new Error(`Transfer failed: ${JSON.stringify(serializedError)}`);
             }
 
-            console.log('Transfer successful:', result.Ok);
+            console.log('Transfer successful:', result.Ok.toString(),result);
             return result.Ok;
         } catch (error) {
             logger.error('Error transferring CKUSDC:', error);
             throw error;
+        }
+    }
+
+    private serializeBigIntError(error: any): any {
+        if (typeof error === 'bigint') {
+            return error.toString();
+        } else if (typeof error === 'object' && error !== null) {
+            const serialized: any = {};
+            for (const [key, value] of Object.entries(error)) {
+                serialized[key] = this.serializeBigIntError(value);
+            }
+            return serialized;
+        } else {
+            return error;
         }
     }
 
@@ -191,8 +207,19 @@ class IcpService {
     }
 
     private getCkUSDCIDL(): IDL.InterfaceFactory {
-        return ({ IDL }) =>
-            IDL.Service({
+        return ({ IDL }) => {
+            const TransferError = IDL.Variant({
+                BadFee: IDL.Record({ expected_fee: IDL.Nat }),
+                BadBurn: IDL.Record({ min_burn_amount: IDL.Nat }),
+                InsufficientFunds: IDL.Record({ balance: IDL.Nat }),
+                TooOld: IDL.Null,
+                CreatedInFuture: IDL.Record({ ledger_time: IDL.Nat64 }),
+                TemporarilyUnavailable: IDL.Null,
+                Duplicate: IDL.Record({ duplicate_of: IDL.Nat }),
+                GenericError: IDL.Record({ error_code: IDL.Nat, message: IDL.Text }),
+            });
+
+            return IDL.Service({
                 icrc1_balance_of: IDL.Func(
                     [IDL.Record({ owner: IDL.Principal, subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)) })],
                     [IDL.Nat],
@@ -209,10 +236,11 @@ class IcpService {
                             amount: IDL.Nat,
                         }),
                     ],
-                    [IDL.Variant({ Ok: IDL.Nat, Err: IDL.Text })],
+                    [IDL.Variant({ Ok: IDL.Nat, Err: TransferError })],
                     [],
                 ),
             });
+        };
     }
 
     private getIndexIDL(): IDL.InterfaceFactory {
@@ -257,6 +285,14 @@ class IcpService {
 
     public getIndexCanisterId(): string {
         return this.indexCanisterId;
+    }
+
+    public async getTransactionByid(id:number){
+        let result = await http.get(
+            `https://icrc-api.internetcomputer.org/api/v1/ledgers/xevnm-gaaaa-aaaar-qafnq-cai/transactions/${id}`,
+        );
+        let json = await result.json();
+        return json;
     }
 }
 
